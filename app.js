@@ -1,5 +1,5 @@
 'use strict';
-const categories=['bungalow 1','bungalow 2','bungalow 3','bungalow 4','bungalow 5','bungalow 6','bungalow 7','bungalow 8','beer','wine','water & soda','spirits','food','diesel for generator','maintenance','carry expenses','taxes','licenses','various','electricity','fuel for car','medical expenses'];
+const categories=['beer','wine','water & soda','spirits','food','diesel for generator','maintenance','carry expenses','taxes','licenses','various','electricity','fuel for car','medical expenses'];
 const $=id=>document.getElementById(id);const months=['january','february','march','april','may','june','july','august','september','october','november','december'];
 for(const c of categories){let o=document.createElement('option');o.value=c;o.textContent=c;$('category').append(o)}
 function localDate(){let d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
