@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Activate Expenses Mobile</title><style>body{font:16px system-ui;margin:0;background:#f2f5f2;color:#193e37}main{max-width:420px;margin:2rem auto;padding:1.25rem}form{display:grid;gap:.65rem}input,button{font:inherit;padding:.7rem;border:1px solid #a3b8af;border-radius:.5rem}button{background:#155d50;color:white}a{color:#155d50}</style></head>
+<body><main><h1>Activate your account</h1><p>Enter the email address and one-time code from your latest invitation, then choose your password.</p><form id="activate"><label for="email">Email</label><input id="email" type="email" autocomplete="username" required><label for="code">Invitation code</label><input id="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required><label for="password">New password</label><input id="password" type="password" autocomplete="new-password" minlength="8" required><label for="confirm">Confirm password</label><input id="confirm" type="password" autocomplete="new-password" minlength="8" required><button id="submit">Activate account</button></form><p id="status" role="status"></p><a href="./">Back to sign in</a></main>
+<script src="config.js"></script><script>
+'use strict';
+const field = id => document.getElementById(id);
+let accessToken;
+let verifiedEmail;
+async function authRequest(path, method, body, token) {
+  const config = window.expensesConfig;
+  const headers = {apikey: config.publishableKey, 'Content-Type': 'application/json'};
+  if (token) headers.Authorization = 'Bearer ' + token;
+  const response = await fetch(new URL('/auth/v1/' + path, config.url), {
+    method, headers, body: JSON.stringify(body), cache: 'no-store', signal: AbortSignal.timeout(15000)
+  });
+  if (!response.ok) throw new Error(String(response.status));
+  return response.json();
+}
+field('activate').addEventListener('submit', async event => {
+  event.preventDefault();
+  const password = field('password').value;
+  const status = field('status');
+  if (password !== field('confirm').value) {
+    status.textContent = 'The passwords do not match.';
+    return;
+  }
+  const email = field('email').value.trim().toLowerCase();
+  const submit = field('submit');
+  submit.disabled = true;
+  status.textContent = 'Activating your account…';
+  try {
+    if (!accessToken || verifiedEmail !== email) {
+      const session = await authRequest('verify', 'POST', {email, token: field('code').value, type: 'invite'});
+      if (!session.access_token) throw new Error('No session');
+      accessToken = session.access_token;
+      verifiedEmail = email;
+    }
+    await authRequest('user', 'PUT', {password}, accessToken);
+    accessToken = undefined;
+    field('activate').reset();
+    field('activate').hidden = true;
+    field('activate').style.display = 'none';
+    status.textContent = 'Password set. You can now sign in.';
+  } catch (error) {
+    if (!accessToken && ['400', '401', '403', '422'].includes(error.message)) {
+      status.textContent = 'This code is invalid or has expired. Use the code from your latest invitation.';
+    } else if (accessToken && ['401', '403'].includes(error.message)) {
+      accessToken = undefined;
+      status.textContent = 'Your session has expired. Ask for a new invitation.';
+    } else {
+      status.textContent = 'Could not complete activation. Check your connection and try again.';
+    }
+  } finally {
+    submit.disabled = false;
+    field('password').value = '';
+    field('confirm').value = '';
+  }
+});
+</script></body></html>
