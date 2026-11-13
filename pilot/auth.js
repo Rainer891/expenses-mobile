@@ -7,6 +7,7 @@ const authUI = (() => {
   const offlineIdentity = 'expenses-mobile-offline-identity';
   let identity = null;
   let receiptSession = null;
+  let dataSession = null;
   let busy = false;
 
   function cachedCategories() {
@@ -144,6 +145,7 @@ const authUI = (() => {
         localStorage.removeItem(offlineIdentity);
       }
       const headers = { Authorization: 'Bearer ' + session.access_token };
+      dataSession = { headers, rows };
       try {
         const admins = await request('/rest/v1/expense_admins?select=user_id&limit=1', { headers });
         if (admins.length) receiptSession = { headers, rows };
@@ -184,6 +186,40 @@ const authUI = (() => {
   offerOffline();
   return {
     currentUser: () => identity,
+    canSyncExpenses: () => Boolean(dataSession) && navigator.onLine,
+    async syncExpense(record) {
+      if (!dataSession || record.operatorId !== identity?.id) {
+        throw new Error('Sign in online to sync this expense.');
+      }
+      const category = dataSession.rows.find(row =>
+        row.name.toLowerCase() === record.category.toLowerCase()
+      );
+      if (!category) throw new Error('This expense category is no longer available.');
+      const { headers } = dataSession;
+      const response = await fetch(new URL('/rest/v1/expenses?on_conflict=id', config.url), {
+        method: 'POST',
+        headers: {
+          apikey: config.publishableKey,
+          ...headers,
+          'Content-Type': 'application/json',
+          Prefer: 'resolution=ignore-duplicates,return=minimal'
+        },
+        body: JSON.stringify({
+          id: record.id,
+          expense_date: record.date,
+          operator_name: identity.email,
+          category_id: category.id,
+          currency: record.value,
+          amount: record.amount,
+          notes: record.notes || null
+        }),
+        signal: AbortSignal.timeout(15000)
+      });
+      if (response.status === 401) throw new Error('Sign in again to sync this expense.');
+      if (!response.ok) throw new Error('Could not sync the expense. Try again from Expense History.');
+      const rows = await request('/rest/v1/expenses?select=id&id=eq.' + encodeURIComponent(record.id), { headers });
+      if (!rows.some(row => row.id === record.id)) throw new Error('Could not confirm the expense in Supabase.');
+    },
     canUploadReceipts: () => Boolean(receiptSession),
     async uploadReceipt(record, page, jpeg) {
       const category = receiptSession?.rows.find(row =>
