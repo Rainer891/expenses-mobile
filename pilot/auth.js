@@ -6,6 +6,7 @@ const authUI = (() => {
   const categoryCache = 'expenses-mobile-categories';
   const offlineIdentity = 'expenses-mobile-offline-identity';
   let identity = null;
+  let receiptSession = null;
   let busy = false;
 
   function cachedCategories() {
@@ -142,6 +143,13 @@ const authUI = (() => {
         localStorage.removeItem(categoryCache);
         localStorage.removeItem(offlineIdentity);
       }
+      const headers = { Authorization: 'Bearer ' + session.access_token };
+      try {
+        const admins = await request('/rest/v1/expense_admins?select=user_id&limit=1', { headers });
+        if (admins.length) receiptSession = { headers, rows };
+      } catch {
+        // Local expense entry remains available if the role check fails.
+      }
       openWorkspace(user, rows, false);
       get('authMessage').textContent = '';
     } catch (error) {
@@ -174,5 +182,31 @@ const authUI = (() => {
   addEventListener('online', offerOffline);
   addEventListener('offline', offerOffline);
   offerOffline();
-  return { currentUser: () => identity };
+  return {
+    currentUser: () => identity,
+    canUploadReceipts: () => Boolean(receiptSession),
+    async uploadReceipt(record, page, jpeg) {
+      const category = receiptSession?.rows.find(row =>
+        row.name.toLowerCase() === record.category.toLowerCase()
+      );
+      if (!category) throw new Error('Sign in as an administrator and select an active category.');
+      const response = await fetch(new URL('/functions/v1/pilot-receipt', config.url), {
+        method: 'POST',
+        headers: {
+          apikey: config.publishableKey,
+          ...receiptSession.headers,
+          'Content-Type': 'image/jpeg',
+          'x-expense-id': record.id,
+          'x-expense-date': record.date,
+          'x-category-id': String(category.id),
+          'x-receipt-page': String(page)
+        },
+        body: jpeg,
+        signal: AbortSignal.timeout(30000)
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.status === 409 && result.filename) return;
+      if (!response.ok) throw new Error(result.error || 'Dropbox upload failed.');
+    }
+  };
 })();
