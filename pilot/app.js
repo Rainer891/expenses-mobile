@@ -135,8 +135,12 @@ function receiptDownloadButton(record) {
     status.textContent = 'Preparing receipt PDF…';
     try {
       const pdf = await createReceiptPDF(record.photos);
-      const category = record.category.normalize('NFKD').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
-      download(pdf, `EXP-${record.date.replaceAll('-', '')}-${record.id}_${category || 'Receipt'}.pdf`);
+      let filename = record.receiptFilename;
+      if (!filename && authUI.canSyncExpenses()) {
+        filename = await authUI.receiptFilename(record).catch(() => null);
+        if (filename) await updateExpenseStatus(record.id, 'receiptFilename', filename);
+      }
+      download(pdf, filename || `Receipt-pending-${record.id}.pdf`);
       status.textContent = '';
     } catch (error) {
       status.textContent = error.message;
@@ -190,6 +194,8 @@ function updateExpenseStatus(id, field, value) {
 async function syncSavedExpense(record) {
   await authUI.syncExpense(record);
   await updateExpenseStatus(record.id, 'supabaseStatus', 'synced');
+  const filename = await authUI.receiptFilename(record).catch(() => null);
+  if (filename) await updateExpenseStatus(record.id, 'receiptFilename', filename);
 }
 
 function expenseSyncButton(record) {
@@ -228,7 +234,8 @@ async function syncExpenseAndReceipt(record) {
     if (current.supabaseStatus !== 'synced') await syncSavedExpense(current);
     if (authUI.canUploadReceipts() && current.photos.length && current.dropboxStatus !== 'uploaded') {
       const pdf = await createReceiptPDF(current.photos);
-      await authUI.uploadReceipt(current, pdf);
+      const filename = await authUI.uploadReceipt(current, pdf);
+      if (filename) await updateExpenseStatus(current.id, 'receiptFilename', filename);
       await updateExpenseStatus(current.id, 'dropboxStatus', 'uploaded');
     }
   } finally {

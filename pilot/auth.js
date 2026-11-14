@@ -221,6 +221,14 @@ const authUI = (() => {
       const rows = await request('/rest/v1/expenses?select=id&id=eq.' + encodeURIComponent(record.id), { headers });
       if (!rows.some(row => row.id === record.id)) throw new Error('Could not confirm the expense in Supabase.');
     },
+    async receiptFilename(record) {
+      if (!dataSession || record.operatorId !== identity?.id) return null;
+      const [row] = await request('/rest/v1/expenses?select=receipt_number,expense_date,expense_categories(name)&id=eq.' + encodeURIComponent(record.id),
+        { headers: dataSession.headers });
+      if (!Number.isSafeInteger(row?.receipt_number) || !row.expense_categories?.name) return null;
+      const category = row.expense_categories.name.normalize('NFKD').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') || 'Receipt';
+      return `EXP-${row.expense_date.replaceAll('-', '')}-${String(row.receipt_number).padStart(4, '0')}_${category}.pdf`;
+    },
     canUploadReceipts: () => Boolean(receiptSession) && navigator.onLine,
     async uploadReceipt(record, pdf) {
       const category = receiptSession?.rows.find(row =>
@@ -241,8 +249,9 @@ const authUI = (() => {
         signal: AbortSignal.timeout(30000)
       });
       const result = await response.json().catch(() => ({}));
-      if (response.status === 409 && result.filename) return;
+      if (response.status === 409 && result.filename) return result.filename;
       if (!response.ok) throw new Error(result.error || 'Dropbox upload failed.');
+      return result.filename;
     }
   };
 })();
