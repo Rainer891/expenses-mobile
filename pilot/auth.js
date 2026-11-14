@@ -221,7 +221,7 @@ const authUI = (() => {
       if (!rows.some(row => row.id === record.id)) throw new Error('Could not confirm the expense in Supabase.');
     },
     canUploadReceipts: () => Boolean(receiptSession),
-    async uploadReceipt(record, page, jpeg) {
+    async uploadReceipt(record, pdf) {
       const category = receiptSession?.rows.find(row =>
         row.name.toLowerCase() === record.category.toLowerCase()
       );
@@ -231,13 +231,12 @@ const authUI = (() => {
         headers: {
           apikey: config.publishableKey,
           ...receiptSession.headers,
-          'Content-Type': 'image/jpeg',
+          'Content-Type': 'application/pdf',
           'x-expense-id': record.id,
           'x-expense-date': record.date,
-          'x-category-id': String(category.id),
-          'x-receipt-page': String(page)
+          'x-category-id': String(category.id)
         },
-        body: jpeg,
+        body: pdf,
         signal: AbortSignal.timeout(30000)
       });
       const result = await response.json().catch(() => ({}));
