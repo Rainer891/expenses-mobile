@@ -1,1 +1,23 @@
-{"name":"Expenses Mobile – The Wishing Tree","short_name":"Expenses","start_url":"./index.html","scope":"./","display":"standalone","background_color":"#f2f5f2","theme_color":"#155d50","icons":[{"src":"../icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}
+{
+  "name": "Expenses Mobile – The Wishing Tree",
+  "short_name": "Expenses",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f2f5f2",
+  "theme_color": "#155d50",
+  "icons": [
+    {
+      "src": "wishing-tree-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "wishing-tree-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
