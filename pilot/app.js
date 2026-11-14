@@ -2,13 +2,23 @@
 const $=id=>document.getElementById(id);const months=['january','february','march','april','may','june','july','august','september','october','november','december'];
 function localDate(){let d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
 $('date').value=localDate();
+function showExpenseDefaults() {
+  $('expenseDefaults').textContent = $('date').value + ' · ' + $('currency').value;
+}
+$('date').addEventListener('input', showExpenseDefaults);
+$('currency').addEventListener('change', showExpenseDefaults);
+showExpenseDefaults();
 const dbp=new Promise((resolve,reject)=>{let r=indexedDB.open('expenses-mobile-v3',1);r.onupgradeneeded=()=>r.result.createObjectStore('expenses',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
 async function store(record){const db=await dbp;return new Promise((res,rej)=>{let tx=db.transaction('expenses','readwrite');tx.objectStore('expenses').put(record);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error)})}
 async function all(){const db=await dbp;return new Promise((res,rej)=>{let r=db.transaction('expenses','readonly').objectStore('expenses').getAll();r.onsuccess=()=>res(r.result.filter(record=>authUI.currentUser() && record.operatorId===authUI.currentUser().id));r.onerror=()=>rej(r.error)})}
 let confirmed=[],candidate=null;
 function showZoom(blob){const url=URL.createObjectURL(blob);$('zoomImage').src=url;$('zoom').classList.remove('hidden');$('zoom').dataset.url=url}
 $('closeZoom').onclick=()=>{if($('zoom').dataset.url)URL.revokeObjectURL($('zoom').dataset.url);delete $('zoom').dataset.url;$('zoom').classList.add('hidden');$('zoomImage').removeAttribute('src')};
-function updateSave(){ $('save').disabled=confirmed.length===0 || Boolean(candidate);$('photoHint').textContent=confirmed.length?`${confirmed.length} confirmed photo(s). Check every page before saving.`:'At least one confirmed photo is required.' }
+let savingExpense = false;
+function updateSave(){ $('takePhoto').textContent=confirmed.length?'Add Receipt Page':'Take Receipt Photo'; $('save').disabled=savingExpense || confirmed.length===0 || Boolean(candidate) || !$('expenseForm').checkValidity();$('photoHint').textContent=confirmed.length?`${confirmed.length} confirmed photo(s). Check every page before saving.`:'At least one confirmed photo is required.' }
+$('expenseForm').addEventListener('input', updateSave);
+$('category').addEventListener('change', updateSave);
+addEventListener('expense-workspace-opened', updateSave);
 function renderPhotos(){const box=$('photos');box.replaceChildren();confirmed.forEach((f,i)=>{const wrap=document.createElement('div');wrap.className='photo';const title=document.createElement('strong');title.textContent=`Page ${i+1} ✓`;const img=document.createElement('img');const url=URL.createObjectURL(f);img.src=url;img.alt=`Receipt page ${i+1}`;img.onload=()=>URL.revokeObjectURL(url);img.onclick=()=>showZoom(f);const retake=document.createElement('button');retake.type='button';retake.className='secondary';retake.textContent='Retake';retake.onclick=()=>{$('camera').dataset.replace=String(i);$('camera').click()};const remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.textContent='Remove';remove.onclick=()=>{confirmed.splice(i,1);renderPhotos()};wrap.append(title,img,retake,remove);box.append(wrap)});updateSave()}
 $('takePhoto').onclick=()=>{$('camera').dataset.replace='';$('camera').click()};
 $('camera').onchange = async () => {
@@ -91,7 +101,7 @@ $('camera').onchange = async () => {
     help.textContent = 'Could not open this photo. Discard it and take a new one.';
   }
 };
-$('expenseForm').onsubmit=async e=>{e.preventDefault();if(!confirmed.length||candidate)return;const user=authUI.currentUser(),operator=user?.email,date=$('date').value,amount=Number($('amount').value);if(!operator||!date||!$('category').value||!(amount>0))return;$('save').disabled=true;try{const id=(crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}`);const record={id,date,year:Number(date.slice(0,4)),month:months[Number(date.slice(5,7))-1],day:Number(date.slice(8,10)),value:$('currency').value,category:$('category').selectedOptions[0].text,categoryId:$('category').value,notes:$('notes').value.trim(),amount,operator,operatorId:user.id,photos:confirmed.slice(),createdAt:new Date().toISOString(),syncStatus:'pending',autoSync:true,dropboxStatus:'not-connected',onedriveStatus:'not-connected'};await store(record);confirmed=[];renderPhotos();$('amount').value='';$('notes').value='';$('message').textContent='Expense and photos saved on this device.';await renderHistory();if(pendingSync) await pendingSync;void syncPendingExpenses()}catch(err){$('message').textContent=`Could not save: ${err.message}`;updateSave()}};
+$('expenseForm').onsubmit=async e=>{e.preventDefault();if(savingExpense||!confirmed.length||candidate)return;const user=authUI.currentUser(),operator=user?.email,date=$('date').value,amount=Number($('amount').value);if(!operator||!date||!$('category').value||!(amount>0))return;savingExpense=true;updateSave();try{const id=(crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}`);const record={id,date,year:Number(date.slice(0,4)),month:months[Number(date.slice(5,7))-1],day:Number(date.slice(8,10)),value:$('currency').value,category:$('category').selectedOptions[0].text,categoryId:$('category').value,notes:$('notes').value.trim(),amount,operator,operatorId:user.id,photos:confirmed.slice(),createdAt:new Date().toISOString(),syncStatus:'pending',autoSync:true,dropboxStatus:'not-connected',onedriveStatus:'not-connected'};await store(record);latestSavedExpense=record.id;confirmed=[];if($('workspace').classList.contains('operator-mode')){$('category').value='';$('date').value=localDate();$('currency').value='TZS';$('expenseDetails').open=false;showExpenseDefaults()}renderPhotos();$('amount').value='';$('notes').value='';$('message').textContent=authUI.canSyncExpenses() ? 'Saved on this device. Syncing expense…' : 'Saved on this device. Sign in online to sync if needed.';await renderHistory();if(pendingSync) await pendingSync;void syncPendingExpenses()}catch(err){$('message').textContent=`Could not save: ${err.message}`;}finally{savingExpense=false;updateSave()}};
 function tab(name){$('newPanel').classList.toggle('hidden',name!=='new');$('historyPanel').classList.toggle('hidden',name!=='history');if(name==='history')renderHistory()}$('newTab').onclick=()=>tab('new');$('historyTab').onclick=()=>tab('history');
 async function renderHistory(){const list=$('history');const rows=(await all()).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));list.replaceChildren();if(!rows.length){list.textContent='No expenses saved yet.';return}for(const r of rows){const el=document.createElement('div');el.className='entry';const name=document.createElement('strong');name.textContent=`${r.date} · ${r.category} · ${Number(r.amount).toLocaleString('en-US')} ${r.value}`;const info=document.createElement('p');info.className='muted';info.textContent=`${r.operator} · ${r.photos.length} photo(s) · ${r.dropboxStatus === "uploaded" ? "Receipts uploaded to Dropbox" : "Receipts stored locally"}`;el.append(name,info);const sync=document.createElement("p");sync.className="muted";sync.textContent=r.supabaseStatus==="synced"?"Expense synced to Supabase":"Expense awaiting Supabase sync";el.append(sync);if(!syncInProgress.has(r.id) && authUI.canSyncExpenses() && r.supabaseStatus!=="synced")el.append(expenseSyncButton(r));for(let i=0;i<r.photos.length;i++){const btn=document.createElement('button');btn.className='secondary';btn.textContent=`View photo ${i+1}`;btn.onclick=()=>viewSavedPhoto(r.photos[i],btn);el.append(btn)}if(!syncInProgress.has(r.id) && authUI.canUploadReceipts() && r.photos.length && r.dropboxStatus !== "uploaded") el.append(receiptUploadButton(r));if(syncErrors.has(r.id)){const error=document.createElement('p');error.setAttribute('role','status');error.textContent=syncErrors.get(r.id);el.append(error)}if(r.photos.length)el.append(receiptDownloadButton(r));list.append(el)}}
 async function viewSavedPhoto(blob, button) {
@@ -223,6 +233,7 @@ function expenseSyncButton(record) {
 const syncInProgress = new Set();
 const syncErrors = new Map();
 let pendingSync;
+let latestSavedExpense;
 
 async function syncExpenseAndReceipt(record) {
   if (syncInProgress.has(record.id)) return;
@@ -253,6 +264,7 @@ function syncPendingExpenses() {
           (!authUI.canUploadReceipts() || record.dropboxStatus === 'uploaded'))) continue;
       try {
         await syncExpenseAndReceipt(record);
+        if (record.id === latestSavedExpense) $('message').textContent = 'Expense synced.';
       } catch (error) {
         syncErrors.set(record.id, error.message);
         $('message').textContent = 'Some items still need sync. Check Expense History.';

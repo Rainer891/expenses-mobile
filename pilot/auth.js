@@ -20,6 +20,9 @@ const authUI = (() => {
 
   function openWorkspace(user, categories, offline) {
     identity = user;
+    const operatorMode = !receiptSession;
+    get('workspace').classList.toggle('operator-mode', operatorMode);
+    get('expenseDetails').open = !operatorMode;
     get('operator').value = user.email;
     showCategories(categories);
     get('authPanel').classList.add('hidden');
@@ -34,6 +37,11 @@ const authUI = (() => {
     const select = get('category');
     const selected = select.value;
     select.replaceChildren(...categories.map(category => new Option(category.name, category.id)));
+    if (get('workspace').classList.contains('operator-mode')) {
+      const placeholder = new Option('Choose a category', '', true, true);
+      placeholder.disabled = true;
+      select.prepend(placeholder);
+    }
     if (categories.some(category => String(category.id) === selected)) select.value = selected;
   }
 
