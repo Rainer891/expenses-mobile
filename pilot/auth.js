@@ -21,15 +21,26 @@ const authUI = (() => {
   function openWorkspace(user, categories, offline) {
     identity = user;
     get('operator').value = user.email;
-    get('category').replaceChildren(...categories.map(category =>
-      new Option(category.name, category.name)
-    ));
+    showCategories(categories);
     get('authPanel').classList.add('hidden');
     get('workspace').classList.remove('hidden');
     get('network').textContent = offline
       ? 'Offline · using saved categories on this device'
       : 'Signed in · expenses and photos are saved on this device';
     dispatchEvent(new Event('expense-workspace-opened'));
+  }
+
+  function showCategories(categories) {
+    const select = get('category');
+    const selected = select.value;
+    select.replaceChildren(...categories.map(category => new Option(category.name, category.id)));
+    if (categories.some(category => String(category.id) === selected)) select.value = selected;
+  }
+
+  function categoryForRecord(record, categories) {
+    return record.categoryId == null
+      ? categories.find(row => row.name.toLowerCase() === record.category.toLowerCase())
+      : { id: record.categoryId };
   }
 
   async function request(path, options = {}) {
@@ -149,7 +160,10 @@ const authUI = (() => {
       dataSession = { headers, rows };
       try {
         const admins = await request('/rest/v1/expense_admins?select=user_id&limit=1', { headers });
-        if (admins.length) receiptSession = { headers, rows };
+        if (admins.some(admin => admin.user_id === user.id)) {
+          receiptSession = { headers, rows };
+          get('manageCategories').hidden = false;
+        }
       } catch {
         // Local expense entry remains available if the role check fails.
       }
@@ -176,6 +190,66 @@ const authUI = (() => {
     if (user?.id && user.email) openWorkspace(user, cachedCategories(), true);
   };
 
+  const categoryPanel = get('categoryAdmin');
+  get('manageCategories').onclick = () => {
+    categoryPanel.hidden = !categoryPanel.hidden;
+    if (!categoryPanel.hidden) void manageCategories();
+  };
+
+  async function manageCategories(change) {
+    if (!receiptSession || !navigator.onLine) return;
+    const status = get('categoryStatus');
+    const controls = [...categoryPanel.querySelectorAll('input, button')];
+    controls.forEach(control => { control.disabled = true; });
+    try {
+      const rows = await request('/rest/v1/rpc/pilot_manage_categories', {
+        method: 'POST',
+        headers: { ...receiptSession.headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(change || {})
+      });
+      const active = rows.filter(row => row.active);
+      dataSession.rows = active;
+      receiptSession.rows = rows;
+      if (localStorage.getItem(offlineIdentity)) localStorage.setItem(categoryCache, JSON.stringify(active));
+      showCategories(active);
+
+      const list = get('categoryAdminList');
+      list.replaceChildren();
+      for (const row of rows) {
+        const form = document.createElement('form');
+        const name = document.createElement('input');
+        name.value = row.name;
+        name.setAttribute('aria-label', 'Name for ' + row.name);
+        name.required = true;
+        name.maxLength = 80;
+        const active = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = row.active;
+        active.append(checkbox, ' Active');
+        const save = document.createElement('button');
+        save.textContent = 'Save category';
+        form.append(name, active, save);
+        form.onsubmit = event => {
+          event.preventDefault();
+          void manageCategories({ category_id: row.id, category_name: name.value.trim(), category_active: checkbox.checked });
+        };
+        list.append(form);
+      }
+      if (change?.category_id === null) get('newCategoryName').value = '';
+      status.textContent = change ? 'Categories updated.' : '';
+    } catch (error) {
+      status.textContent = error.message === '409' ? 'This category name already exists.' : 'Could not load or save categories. Check your connection and try again.';
+    } finally {
+      controls.forEach(control => { control.disabled = false; });
+    }
+  }
+
+  get('addCategoryForm').onsubmit = event => {
+    event.preventDefault();
+    void manageCategories({ category_id: null, category_name: get('newCategoryName').value.trim(), category_active: true });
+  };
+
   get('signOut').onclick = () => {
     localStorage.removeItem(categoryCache);
     localStorage.removeItem(offlineIdentity);
@@ -192,9 +266,7 @@ const authUI = (() => {
       if (!dataSession || record.operatorId !== identity?.id) {
         throw new Error('Sign in online to sync this expense.');
       }
-      const category = dataSession.rows.find(row =>
-        row.name.toLowerCase() === record.category.toLowerCase()
-      );
+      const category = categoryForRecord(record, dataSession.rows);
       if (!category) throw new Error('This expense category is no longer available.');
       const { headers } = dataSession;
       const response = await fetch(new URL('/rest/v1/expenses?on_conflict=id', config.url), {
@@ -231,9 +303,7 @@ const authUI = (() => {
     },
     canUploadReceipts: () => Boolean(receiptSession) && navigator.onLine,
     async uploadReceipt(record, pdf) {
-      const category = receiptSession?.rows.find(row =>
-        row.name.toLowerCase() === record.category.toLowerCase()
-      );
+      const category = receiptSession && categoryForRecord(record, receiptSession.rows);
       if (!category) throw new Error('Sign in as an administrator and select an active category.');
       const response = await fetch(new URL('/functions/v1/pilot-receipt', config.url), {
         method: 'POST',
