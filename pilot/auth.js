@@ -29,6 +29,7 @@ const authUI = (() => {
     get('network').textContent = offline
       ? 'Offline · using saved categories on this device'
       : 'Signed in · expenses and photos are saved on this device';
+    dispatchEvent(new Event('expense-workspace-opened'));
   }
 
   async function request(path, options = {}) {
@@ -220,7 +221,7 @@ const authUI = (() => {
       const rows = await request('/rest/v1/expenses?select=id&id=eq.' + encodeURIComponent(record.id), { headers });
       if (!rows.some(row => row.id === record.id)) throw new Error('Could not confirm the expense in Supabase.');
     },
-    canUploadReceipts: () => Boolean(receiptSession),
+    canUploadReceipts: () => Boolean(receiptSession) && navigator.onLine,
     async uploadReceipt(record, pdf) {
       const category = receiptSession?.rows.find(row =>
         row.name.toLowerCase() === record.category.toLowerCase()
