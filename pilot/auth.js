@@ -274,7 +274,7 @@ const authUI = (() => {
       if (!dataSession || record.operatorId !== identity?.id) {
         throw new Error('Sign in online to sync this expense.');
       }
-      const category = categoryForRecord(record, dataSession.rows);
+      const category = categoryForRecord(record, receiptSession?.rows ?? dataSession.rows);
       if (!category) throw new Error('This expense category is no longer available.');
       const { headers } = dataSession;
       const response = await fetch(new URL('/rest/v1/expenses?on_conflict=id', config.url), {
@@ -309,15 +309,18 @@ const authUI = (() => {
       const category = row.expense_categories.name.normalize('NFKD').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') || 'Receipt';
       return `EXP-${row.expense_date.replaceAll('-', '')}-${String(row.receipt_number).padStart(4, '0')}_${category}.pdf`;
     },
-    canUploadReceipts: () => Boolean(receiptSession) && navigator.onLine,
+    canUploadReceipts: () => Boolean(dataSession) && navigator.onLine,
     async uploadReceipt(record, pdf) {
-      const category = receiptSession && categoryForRecord(record, receiptSession.rows);
-      if (!category) throw new Error('Sign in as an administrator and select an active category.');
+      if (!dataSession || record.operatorId !== identity?.id) {
+        throw new Error('Sign in online to upload this receipt.');
+      }
+      const category = categoryForRecord(record, receiptSession?.rows ?? dataSession.rows);
+      if (!category) throw new Error('This expense category is unavailable.');
       const response = await fetch(new URL('/functions/v1/pilot-receipt', config.url), {
         method: 'POST',
         headers: {
           apikey: config.publishableKey,
-          ...receiptSession.headers,
+          ...dataSession.headers,
           'Content-Type': 'application/pdf',
           'x-expense-id': record.id,
           'x-expense-date': record.date,
