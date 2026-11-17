@@ -24,6 +24,16 @@
 <h2>Excel Register</h2>
 <p id="registerStatus" role="status"></p>
 <button id="refreshRegister" class="secondary">Refresh</button>
+<form id="registerFilters" hidden>
+<label for="registerSearch">Search category, notes or amount</label>
+<input id="registerSearch" type="search">
+<div class="row"><div><label for="registerFrom">From</label><input id="registerFrom" type="date"></div>
+<div><label for="registerTo">To</label><input id="registerTo" type="date"></div></div>
+<label for="registerCategory">Category</label><select id="registerCategory"><option value="">All categories</option></select>
+<label for="registerCurrency">Currency</label><select id="registerCurrency"><option value="">All currencies</option></select>
+<button class="secondary" type="reset">Clear filters</button>
+</form>
+<p id="registerMatches" class="muted" role="status"></p>
 <div id="registerEntries"></div>
 <button id="moreRegister" class="secondary" hidden>Show more</button>
-</section></div></main><div id="zoom" class="zoom hidden"><button id="closeZoom">Close</button><img id="zoomImage" alt="Receipt enlarged"></div><script src="config.js"></script><script src="auth.js?v=excel-register"></script><script src="receipt-pdf.js"></script><script src="receipt-crop.js"></script><script src="app.js?v=excel-register"></script><script src="workbook-register.js"></script></body></html>
+</section></div></main><div id="zoom" class="zoom hidden"><button id="closeZoom">Close</button><img id="zoomImage" alt="Receipt enlarged"></div><script src="config.js"></script><script src="auth.js?v=excel-register"></script><script src="receipt-pdf.js"></script><script src="receipt-crop.js"></script><script src="app.js?v=excel-register"></script><script src="workbook-register.js?v=filters"></script></body></html>
