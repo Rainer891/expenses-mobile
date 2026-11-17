@@ -171,6 +171,7 @@ const authUI = (() => {
         if (admins.some(admin => admin.user_id === user.id)) {
           receiptSession = { headers, rows };
           get('manageCategories').hidden = false;
+          get('registerTab').hidden = false;
         }
       } catch {
         // Local expense entry remains available if the role check fails.
@@ -270,6 +271,12 @@ const authUI = (() => {
   return {
     currentUser: () => identity,
     canSyncExpenses: () => Boolean(dataSession) && navigator.onLine,
+    async workbookRegister() {
+      if (!receiptSession) throw new Error('Administrator sign-in required.');
+      const [snapshot] = await request('/rest/v1/expense_workbook_snapshot?select=updated_at,entries&id=eq.1',
+        { headers: receiptSession.headers });
+      return snapshot;
+    },
     async syncExpense(record) {
       if (!dataSession || record.operatorId !== identity?.id) {
         throw new Error('Sign in online to sync this expense.');
