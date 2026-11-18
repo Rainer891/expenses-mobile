@@ -15,8 +15,39 @@ let confirmed=[],candidate=null;
 function showZoom(blob){const url=URL.createObjectURL(blob);$('zoomImage').src=url;$('zoom').classList.remove('hidden');$('zoom').dataset.url=url}
 $('closeZoom').onclick=()=>{if($('zoom').dataset.url)URL.revokeObjectURL($('zoom').dataset.url);delete $('zoom').dataset.url;$('zoom').classList.add('hidden');$('zoomImage').removeAttribute('src')};
 let savingExpense = false;
-function updateSave(){ $('takePhoto').textContent=confirmed.length?'Add Receipt Page':'Take Receipt Photo'; $('save').disabled=savingExpense || confirmed.length===0 || Boolean(candidate) || !$('expenseForm').checkValidity();$('photoHint').textContent=confirmed.length?`${confirmed.length} confirmed photo(s). Check every page before saving.`:'At least one confirmed photo is required.' }
+function parseExpenseAmount(text) {
+  let value = String(text).trim().replace(/[\u00a0\u202f]/g, ' ');
+  if (value.includes(' ')) {
+    if (!/^\d{1,3}(?: \d{3})+(?:[.,]\d{1,2})?$/.test(value)) return null;
+    value = value.replaceAll(' ', '');
+  }
+  if (/^\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?$/.test(value)) {
+    value = value.replaceAll(',', '');
+  } else if (/^\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$/.test(value)) {
+    value = value.replaceAll('.', '').replace(',', '.');
+  } else if (/^\d+(?:[.,]\d{1,2})?$/.test(value)) {
+    value = value.replace(',', '.');
+  } else {
+    return null;
+  }
+  const [whole, fraction = ''] = value.split('.');
+  const minorUnits = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
+  if (minorUnits <= 0n || minorUnits > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+  return Number(minorUnits) / 100;
+}
+
+function updateAmountPreview() {
+  const input = $('amount');
+  const amount = parseExpenseAmount(input.value);
+  input.setCustomValidity(amount === null && input.value
+    ? 'Enter an amount such as 120000 or 120,000. Use up to 2 decimal places.' : '');
+  $('amountPreview').textContent = amount === null ? ''
+    : 'Amount to save: ' + amount.toLocaleString('en-GB', { maximumFractionDigits: 2 }) + ' ' + $('currency').value;
+}
+
+function updateSave(){ updateAmountPreview(); $('takePhoto').textContent=confirmed.length?'Add Receipt Page':'Take Receipt Photo'; $('save').disabled=savingExpense || confirmed.length===0 || Boolean(candidate) || !$('expenseForm').checkValidity();$('photoHint').textContent=confirmed.length?`${confirmed.length} confirmed photo(s). Check every page before saving.`:'At least one confirmed photo is required.' }
 $('expenseForm').addEventListener('input', updateSave);
+$('currency').addEventListener('change', updateSave);
 $('category').addEventListener('change', updateSave);
 addEventListener('expense-workspace-opened', updateSave);
 function renderPhotos(){const box=$('photos');box.replaceChildren();confirmed.forEach((f,i)=>{const wrap=document.createElement('div');wrap.className='photo';const title=document.createElement('strong');title.textContent=`Page ${i+1} ✓`;const img=document.createElement('img');const url=URL.createObjectURL(f);img.src=url;img.alt=`Receipt page ${i+1}`;img.onload=()=>URL.revokeObjectURL(url);img.onclick=()=>showZoom(f);const retake=document.createElement('button');retake.type='button';retake.className='secondary';retake.textContent='Retake';retake.onclick=()=>{$('camera').dataset.replace=String(i);$('camera').click()};const remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.textContent='Remove';remove.onclick=()=>{confirmed.splice(i,1);renderPhotos()};wrap.append(title,img,retake,remove);box.append(wrap)});updateSave()}
@@ -101,7 +132,7 @@ $('camera').onchange = async () => {
     help.textContent = 'Could not open this photo. Discard it and take a new one.';
   }
 };
-$('expenseForm').onsubmit=async e=>{e.preventDefault();if(savingExpense||!confirmed.length||candidate)return;const user=authUI.currentUser(),operator=user?.email,date=$('date').value,amount=Number($('amount').value);if(!operator||!date||!$('category').value||!(amount>0))return;savingExpense=true;updateSave();try{const id=(crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}`);const record={id,date,year:Number(date.slice(0,4)),month:months[Number(date.slice(5,7))-1],day:Number(date.slice(8,10)),value:$('currency').value,category:$('category').selectedOptions[0].text,categoryId:$('category').value,notes:$('notes').value.trim(),amount,operator,operatorId:user.id,photos:confirmed.slice(),createdAt:new Date().toISOString(),syncStatus:'pending',autoSync:true,dropboxStatus:'not-connected',onedriveStatus:'not-connected'};await store(record);latestSavedExpense=record.id;confirmed=[];if($('workspace').classList.contains('operator-mode')){$('category').value='';$('date').value=localDate();$('currency').value='TZS';$('expenseDetails').open=false;showExpenseDefaults()}renderPhotos();$('amount').value='';$('notes').value='';$('message').textContent=authUI.canSyncExpenses() ? 'Saved on this device. Syncing expense…' : 'Saved on this device. Sign in online to sync if needed.';await renderHistory();if(pendingSync) await pendingSync;void syncPendingExpenses()}catch(err){$('message').textContent=`Could not save: ${err.message}`;}finally{savingExpense=false;updateSave()}};
+$('expenseForm').onsubmit=async e=>{e.preventDefault();if(savingExpense||!confirmed.length||candidate)return;const user=authUI.currentUser(),operator=user?.email,date=$('date').value,amount=parseExpenseAmount($('amount').value);if(!operator||!date||!$('category').value||!(amount>0))return;savingExpense=true;updateSave();try{const id=(crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}`);const record={id,date,year:Number(date.slice(0,4)),month:months[Number(date.slice(5,7))-1],day:Number(date.slice(8,10)),value:$('currency').value,category:$('category').selectedOptions[0].text,categoryId:$('category').value,notes:$('notes').value.trim(),amount,operator,operatorId:user.id,photos:confirmed.slice(),createdAt:new Date().toISOString(),syncStatus:'pending',autoSync:true,dropboxStatus:'not-connected',onedriveStatus:'not-connected'};await store(record);latestSavedExpense=record.id;confirmed=[];if($('workspace').classList.contains('operator-mode')){$('category').value='';$('date').value=localDate();$('currency').value='TZS';$('expenseDetails').open=false;showExpenseDefaults()}renderPhotos();$('amount').value='';$('notes').value='';$('message').textContent=authUI.canSyncExpenses() ? 'Saved on this device. Syncing expense…' : 'Saved on this device. Sign in online to sync if needed.';await renderHistory();if(pendingSync) await pendingSync;void syncPendingExpenses()}catch(err){$('message').textContent=`Could not save: ${err.message}`;}finally{savingExpense=false;updateSave()}};
 function tab(name) {
   for (const panel of ['new', 'history', 'register']) {
     $(panel + 'Panel').classList.toggle('hidden', name !== panel);
