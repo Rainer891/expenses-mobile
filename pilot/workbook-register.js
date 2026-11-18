@@ -31,6 +31,14 @@
       details.className = 'muted';
       details.textContent = [[entry.day, entry.month, entry.year].join(' '), entry.notes].filter(Boolean).join(' · ');
       row.append(title, details);
+      const verification = String(entry.verificationStatus ?? '').trim();
+      if (verification) {
+        const state = document.createElement('p');
+        state.className = 'muted';
+        const labels = { 'da verificare': 'To verify', 'verificata': 'Verified' };
+        state.textContent = labels[verification.toLowerCase()] ?? verification;
+        row.append(state);
+      }
 
       if (entry.receipt && /^https:\/\/(?:www\.)?dropbox\.com\//i.test(entry.receipt)) {
         const link = document.createElement('a');
