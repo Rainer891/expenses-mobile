@@ -31,6 +31,23 @@
       details.className = 'muted';
       details.textContent = [[entry.day, entry.month, entry.year].join(' '), entry.notes].filter(Boolean).join(' · ');
       row.append(title, details);
+      const check = document.createElement('p');
+      check.className = 'muted';
+      const result = String(entry.receiptCheck ?? '');
+      const mismatch = result.startsWith('Importo diverso');
+      const matched = result.startsWith('Corrisponde');
+      check.textContent = mismatch ? 'Amount differs from PDF' : matched ? 'Amount matches PDF' : 'PDF amount requires review';
+      if (!result) check.textContent = 'PDF amount has not been checked yet';
+      if (entry.receiptAmount != null && Number.isFinite(Number(entry.receiptAmount))) {
+        check.textContent += ' · PDF total: ' + Number(entry.receiptAmount).toLocaleString('en-GB', { maximumFractionDigits: 10 });
+      }
+      if (result.includes('valuta da verificare')) check.textContent += ' · PDF currency requires review';
+      if (mismatch) {
+        title.style.backgroundColor = '#ffcccc';
+        title.style.color = '#9c0006';
+        check.style.color = '#9c0006';
+      }
+      row.append(check);
 
       if (entry.receipt && /^https:\/\/(?:www\.)?dropbox\.com\//i.test(entry.receipt)) {
         const link = document.createElement('a');
